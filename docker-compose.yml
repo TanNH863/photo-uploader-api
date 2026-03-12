@@ -9,25 +9,25 @@ services:
     networks:
       - photouploader-network
     depends_on:
-      # - web
+      - web
       - api
 
-  # web:
-  #   image: nguyenhuutan080603044/photouploader-frontend:latest
-  #   container_name: photouploader_web
-  #   environment:
-  #     - NODE_ENV=development
-  #     - NEXT_PUBLIC_API_URL=/api
-  #   command: npm run dev
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ['CMD', 'curl', '-f', 'http://localhost:3000']
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 40s
-  #   networks:
-  #     - photouploader-network
+  web:
+    image: nguyenhuutan080603044/photouploader-frontend:latest
+    container_name: photouploader_web
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=/api
+    command: npm run dev
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - photouploader-network
 
   api:
     image: nguyenhuutan080603044/photouploader-backend:latest

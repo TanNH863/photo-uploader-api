@@ -3,15 +3,34 @@ import multer from "multer";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import dotenv from "dotenv";
+import path from "path";
+import fs from "fs";
 
 dotenv.config(); 
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 const app = express();
-const upload = multer({ dest: "uploads/" }); // stores files locally
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath);
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + "-" + uniqueSuffix + ext);
+  }
+});
+const upload = multer({ storage: storage });
 
 app.use(express.json());
+
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // Upload an image
 app.post("/upload/:userId", upload.single("photo"), async (req: Request, res: Response) => {
@@ -26,6 +45,15 @@ app.post("/upload/:userId", upload.single("photo"), async (req: Request, res: Re
     }
 
     const fileUrl = `/uploads/${req.file.filename}`; // In production, use cloud storage
+
+    // Verify user exists
+    const user = await prisma.user.findUnique({
+      where: { uuid: userId },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
 
     // Create image record
     const image = await prisma.image.create({
@@ -57,6 +85,15 @@ app.post("/comments/:userId", async (req: Request, res: Response) => {
 
     if (!text) {
       return res.status(400).json({ error: "Missing comment text" });
+    }
+
+    // Verify user exists
+    const user = await prisma.user.findUnique({
+      where: { uuid: userId },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
     }
 
     // Create comment record
@@ -94,6 +131,56 @@ app.get("/images", async (_req: Request, res: Response) => {
   }
 });
 
+app.get("/images/:imageId/comments", async (req: Request, res: Response) => {
+  try {
+    const { imageId } = req.params;
+
+    if (typeof imageId !== "string") {
+      return res.status(400).json({ error: "Invalid imageId: must be a string" });
+    }
+
+    // Fetch the image and traverse the relations
+    const image = await prisma.image.findUnique({
+      where: { uuid: imageId },
+      include: {
+        imageComments: {
+          include: {
+            comment: {
+              include: {
+                // Also include the users who made the comment
+                userComments: {
+                  include: { user: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!image) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+
+    // Flatten the explicit many-to-many join tables
+    const formattedComments = image.imageComments.map((ic) => ({
+      uuid: ic.comment.uuid,
+      text: ic.comment.text,
+      users: ic.comment.userComments.map((uc) => uc.user),
+    }));
+
+    // Return the image data along with the flattened comments
+    res.json({
+      uuid: image.uuid,
+      image_url: image.image_url,
+      comments: formattedComments,
+    });
+  } catch (err) {
+    const error = err as Error;
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get all comments with linked users
 app.get("/comments", async (_req: Request, res: Response) => {
   try {
@@ -105,6 +192,26 @@ app.get("/comments", async (_req: Request, res: Response) => {
       },
     });
     res.json(comments);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/user", async (req: Request, res: Response) => {
+  try {
+    const { userId, name } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: "Missing user uuid" });
+    }
+    if (!name) {
+      return res.status(400).json({ error: "Missing user name" });
+    }
+
+    const user = await prisma.user.create({
+      data: { uuid: userId, name },
+    });
+
+    res.json(user);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
