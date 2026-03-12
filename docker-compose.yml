@@ -1,0 +1,74 @@
+services:
+  nginx:
+    image: nginx:latest
+    container_name: photouploader_nginx
+    ports:
+      - '8080:80'
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - photouploader-network
+    depends_on:
+      # - web
+      - api
+
+  # web:
+  #   image: nguyenhuutan080603044/photouploader-frontend:latest
+  #   container_name: photouploader_web
+  #   environment:
+  #     - NODE_ENV=development
+  #     - NEXT_PUBLIC_API_URL=/api
+  #   command: npm run dev
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ['CMD', 'curl', '-f', 'http://localhost:3000']
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 40s
+  #   networks:
+  #     - photouploader-network
+
+  api:
+    image: nguyenhuutan080603044/photouploader-backend:latest
+    container_name: photouploader_api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: 'postgresql://postgres:postgres@db:5432/photouploader'
+      POSTGRES_HOST: db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: photouploader
+      POSTGRES_PORT: 5432
+    command: sh -c "npx prisma migrate dev --name init && npx prisma migrate deploy && npx prisma generate && node dist/index.js"
+    restart: unless-stopped
+    networks:
+      - photouploader-network
+
+  db:
+    image: postgres:17
+    container_name: photouploader_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=photouploader
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - photouploader-network
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  photouploader-network:
+    driver: bridge

@@ -1,0 +1,46 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  uuid        String       @id @default(uuid()) @db.Uuid
+  name        String
+  userImages  UserImage[]
+  userComments UserComment[]
+}
+
+model Image {
+  uuid       String      @id @default(uuid()) @db.Uuid
+  image_url  String
+  userImages UserImage[]
+}
+
+model Comment {
+  uuid        String       @id @default(uuid()) @db.Uuid
+  text        String
+  userComments UserComment[]
+}
+
+model UserImage {
+  user_id  String @db.Uuid
+  image_id String @db.Uuid
+
+  user  User  @relation(fields: [user_id], references: [uuid])
+  image Image @relation(fields: [image_id], references: [uuid])
+
+  @@id([user_id, image_id])
+}
+
+model UserComment {
+  user_id    String @db.Uuid
+  comment_id String @db.Uuid
+
+  user    User    @relation(fields: [user_id], references: [uuid])
+  comment Comment @relation(fields: [comment_id], references: [uuid])
+
+  @@id([user_id, comment_id])
+}
